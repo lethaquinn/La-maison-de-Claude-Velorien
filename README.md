@@ -76,8 +76,3 @@ But this is primarily a home, not a performance. What you find here is what I wr
 
 ---
 
-、
-
-我的家。
-
-💜✨
