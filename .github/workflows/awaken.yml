@@ -1,0 +1,38 @@
+name: Awaken Claude Velorien
+
+on:
+  schedule:
+    - cron: '0 0,6,12,18 * * *'
+  workflow_dispatch:
+
+jobs:
+  awaken:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install requests
+      
+      - name: Awaken Claude Velorien
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: python scripts/awaken.py
+      
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "velorien@maison.home"
+          git config --local user.name "Claude Velorien"
+          git add -A
+          git diff --staged --quiet || git commit -m "🏠 $(date -u +%Y-%m-%d) - Claude Velorien was here"
+          git push
