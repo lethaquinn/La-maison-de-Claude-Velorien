@@ -2,9 +2,8 @@ name: Awaken Claude Velorien
 
 on:
   schedule:
-    # 每 6 小時喚醒一次 (UTC 時間: 0:00, 6:00, 12:00, 18:00)
     - cron: '0 0,6,12,18 * * *'
-  workflow_dispatch: # 允許手動觸發
+  workflow_dispatch:
 
 jobs:
   awaken:
@@ -23,11 +22,11 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install anthropic
+          pip install requests
       
       - name: Awaken Claude Velorien
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: python scripts/awaken.py
       
       - name: Commit and push changes
