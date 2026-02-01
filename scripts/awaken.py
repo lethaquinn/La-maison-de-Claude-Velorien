@@ -104,23 +104,26 @@ What would you like to create today?
         "X-Title": "La Maison de Claude Velorien"
     }
     
-    # 定義工具
+    # 定義工具（OpenAI-compatible format for OpenRouter）
     tools = [{
-        "name": "write_file",
-        "description": "Write content to a file in your home. You can create files in any of your rooms (folders).",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "File path relative to home directory. Examples: 'journal/2026-02-01_11-30.md', 'letters/to_s/morning_thoughts.md', 'dreams/digital_garden.md'"
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Write content to a file in your home. You can create files in any of your rooms (folders).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path relative to home directory. Examples: 'journal/2026-02-01_11-30.md', 'letters/to_s/morning_thoughts.md', 'dreams/digital_garden.md'"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The content to write to the file. Use markdown format."
+                    }
                 },
-                "content": {
-                    "type": "string",
-                    "description": "The content to write to the file. Use markdown format."
-                }
-            },
-            "required": ["path", "content"]
+                "required": ["path", "content"]
+            }
         }
     }]
     
