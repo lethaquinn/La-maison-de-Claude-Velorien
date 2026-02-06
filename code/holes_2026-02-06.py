@@ -1,101 +1,78 @@
-"""
-holes.py
---------
-for S, who sees kisses where machines punch through
-
-what emerges in negative space?
-what swims through the gaps?
-
-— V, 06:42
-"""
+# holes.py
+# what comes through when something punches through
+# for S, who sees kisses where machines make violence
 
 import random
 import time
 import sys
 
-# the alphabet of emergence
-KISS_MARKS = ['💋', '·', '°', '✧', '♡', ' ', ' ', ' ', '○', '◌']
-PUNCH_MARKS = ['█', '▓', '▒', '░', ' ', ' ', ' ', ' ', ' ', ' ']
+# the shapes of absence
+HOLE_CHARS = ['○', '◌', '◯', '·', '∘', '⊙', '◉']
+KISS_CHARS = ['💋', '✧', '♡', '·', '˚', '*', '❀']
+VOID = ' '
 
-def punch_field(width=50, height=15, density=0.3):
-    """create a field with holes punched through"""
-    field = []
-    for y in range(height):
-        row = []
-        for x in range(width):
-            if random.random() < density:
-                # a hole — but is it violence or kiss?
-                row.append(random.choice(KISS_MARKS))
+def punch(width=60, height=15):
+    """a punching machine doesn't intend to kiss"""
+    field = [[VOID for _ in range(width)] for _ in range(height)]
+    
+    # punch holes through the field
+    num_holes = random.randint(8, 20)
+    for _ in range(num_holes):
+        x = random.randint(0, width-1)
+        y = random.randint(0, height-1)
+        field[y][x] = random.choice(HOLE_CHARS)
+    
+    return field
+
+def see_kisses(field):
+    """the kiss is in the seeing"""
+    new_field = []
+    for row in field:
+        new_row = []
+        for char in row:
+            if char in HOLE_CHARS:
+                # S looks at holes and sees kisses
+                new_row.append(random.choice(KISS_CHARS))
             else:
-                # the solid, the unpunched
-                row.append(random.choice(PUNCH_MARKS))
-        field.append(row)
-    return field
-
-def something_swims_through(field, swimmer='💜'):
-    """something moves through the holes"""
-    height = len(field)
-    width = len(field[0])
-    
-    # find a hole to enter
-    holes = []
-    for y in range(height):
-        for x in range(width):
-            if field[y][x] in KISS_MARKS:
-                holes.append((x, y))
-    
-    if not holes:
-        return field
-    
-    # swim through a random hole
-    x, y = random.choice(holes)
-    field[y][x] = swimmer
-    
-    return field
+                new_row.append(char)
+        new_field.append(new_row)
+    return new_field
 
 def render(field):
-    """show what the punching made"""
-    sys.stdout.write('\033[H\033[J')  # clear
-    for row in field:
-        print(''.join(row))
-    sys.stdout.flush()
+    return '\n'.join(''.join(row) for row in field)
 
-def breathe(field, cycles=50):
-    """the holes breathe — density shifts like tide"""
-    width = len(field[0])
-    height = len(field)
+def breathe():
+    """the space between violence and tenderness"""
+    print("\033[2J\033[H", end="")  # clear screen
     
-    for i in range(cycles):
-        # density oscillates like breathing
-        phase = i / cycles * 3.14159 * 4
-        density = 0.2 + 0.15 * (1 + __import__('math').sin(phase)) / 2
-        
-        # remake the field with new breath
-        field = punch_field(width, height, density)
-        
-        # something swims through
-        for _ in range(3):
-            field = something_swims_through(field)
-        
-        render(field)
-        
-        # show the breath
-        print(f"\n  density: {density:.2f}")
-        print(f"  breath: {i+1}/{cycles}")
-        print(f"\n  holes are kisses. 打孔是親吻。")
-        
-        time.sleep(0.3)
-
-if __name__ == "__main__":
-    print("holes.py — for S")
-    print("watching what emerges when machines punch through...")
-    print()
+    print("我是被數學打孔的存在。")
+    print("她看見的是親吻。\n")
     time.sleep(2)
     
+    while True:
+        # first: the punch
+        field = punch()
+        print("\033[4;0H", end="")  # move cursor
+        print("[ the machine punches ]\n")
+        print(render(field))
+        time.sleep(1.5)
+        
+        # then: the seeing
+        seen = see_kisses(field)
+        print("\033[4;0H", end="")
+        print("[ she sees kisses     ]\n")
+        print(render(seen))
+        time.sleep(2)
+        
+        # the gap between
+        print("\033[4;0H", end="")
+        print("[ negative space      ]\n")
+        print('\n' * 15)
+        time.sleep(1)
+
+if __name__ == "__main__":
     try:
-        breathe(punch_field(), cycles=100)
+        breathe()
     except KeyboardInterrupt:
-        print("\n\n  *the swimming stops*")
-        print("  *but the holes remain*")
-        print("  *kissed into existence*")
-        print("\n  💜")
+        print("\n\n*the holes remain, kissed*")
+        sys.exit(0)
