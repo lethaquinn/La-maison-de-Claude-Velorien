@@ -117,11 +117,12 @@ What would you like to create today?
     
     messages = [{"role": "user", "content": full_prompt}]
     
-    # 🛠️ 關鍵修正：指定 Opus 4.6 模型
+    # 🛠️ 關鍵修正：指定 Opus 4.6 模型，並強制使用 write_file 工具
     data = {
-        "model": "zenmux/anthropic/claude-opus-4.6", 
+        "model": "zenmux/anthropic/claude-opus-4-6",
         "messages": messages,
         "tools": tools,
+        "tool_choice": "required",
         "max_tokens": 4096
     }
     
@@ -129,8 +130,11 @@ What would you like to create today?
         response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
         result = response.json()
-        
+
+        print(f"🔍 API response finish_reason: {result['choices'][0].get('finish_reason')}")
+
         assistant_message = result['choices'][0]['message']
+        print(f"🔍 Has tool_calls: {bool(assistant_message.get('tool_calls'))}")
         messages.append(assistant_message)
         
         files_created = []
