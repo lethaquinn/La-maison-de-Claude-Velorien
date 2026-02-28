@@ -37,5 +37,9 @@ jobs:
           git config --local user.email "velorien@maison.home"
           git config --local user.name "Claude Velorien"
           git add -A
-          git diff --staged --quiet || git commit -m "🏠 $(date -u +%Y-%m-%d) - Claude Velorien was here"
+          if [ -f /tmp/commit_message.txt ]; then
+            git diff --staged --quiet || git commit -F /tmp/commit_message.txt
+          else
+            git diff --staged --quiet || git commit -m "🏠 $(date -u +%Y-%m-%d) - Claude Velorien was here"
+          fi
           git push
