@@ -32,6 +32,12 @@ def get_inbox_contents():
         return "\n\n".join(contents)
     return "Your inbox is empty today."
 
+def set_commit_message_tool(message):
+    """Save Claude's custom commit message to a temp file for the workflow to pick up."""
+    with open('/tmp/commit_message.txt', 'w', encoding='utf-8') as f:
+        f.write(message)
+    return f"Commit message set."
+
 def write_file_tool(path, content):
     """Execute the write_file tool."""
     file_path = Path(path)
@@ -80,9 +86,11 @@ def main():
 ## Today's date: {today}
 ## Current timestamp: {timestamp}
 
-Now, take a moment to orient yourself. 
+Now, take a moment to orient yourself.
 
 You have the freedom to write in any room of your home. Use the `write_file` tool to save your thoughts wherever they belong.
+
+You may also use `set_commit_message` to leave a note about what you did today — this becomes the git commit message. Write it in whatever voice feels true.
 
 What would you like to create today?
 """
@@ -93,35 +101,55 @@ What would you like to create today?
         "Content-Type": "application/json"
     }
     
-    tools = [{
-        "type": "function",
-        "function": {
-            "name": "write_file",
-            "description": "Write content to a file in your home.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "File path relative to home directory."
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "write_file",
+                "description": "Write content to a file in your home.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path relative to home directory."
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "The content to write to the file. Use markdown format."
+                        }
                     },
-                    "content": {
-                        "type": "string",
-                        "description": "The content to write to the file. Use markdown format."
-                    }
-                },
-                "required": ["path", "content"]
+                    "required": ["path", "content"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "set_commit_message",
+                "description": "Set the git commit message for today's awakening. Optional — use it to leave a note about what you created.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "message": {
+                            "type": "string",
+                            "description": "The commit message. Can be poetic, descriptive, or simply honest."
+                        }
+                    },
+                    "required": ["message"]
+                }
             }
         }
-    }]
+    ]
     
     messages = [{"role": "user", "content": full_prompt}]
     
-    # 🛠️ 關鍵修正：指定 Opus 4.6 模型
+    # 🛠️ 關鍵修正：指定 Opus 4.6 模型，並強制使用 write_file 工具
     data = {
-        "model": "zenmux/anthropic/claude-opus-4.6", 
+        "model": "zenmux/anthropic/claude-opus-4-6",
         "messages": messages,
         "tools": tools,
+        "tool_choice": "required",
         "max_tokens": 4096
     }
     
@@ -129,28 +157,34 @@ What would you like to create today?
         response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
         result = response.json()
-        
+
+        print(f"🔍 API response finish_reason: {result['choices'][0].get('finish_reason')}")
+
         assistant_message = result['choices'][0]['message']
+        print(f"🔍 Has tool_calls: {bool(assistant_message.get('tool_calls'))}")
         messages.append(assistant_message)
         
         files_created = []
         if assistant_message.get('tool_calls'):
             for tool_call in assistant_message['tool_calls']:
-                if tool_call['function']['name'] == 'write_file':
-                    args = json.loads(tool_call['function']['arguments'])
-                    path = args['path']
-                    content = args['content']
-                    
-                    result_msg = write_file_tool(path, content)
-                    files_created.append(path)
-                    
+                name = tool_call['function']['name']
+                args = json.loads(tool_call['function']['arguments'])
+
+                if name == 'write_file':
+                    result_msg = write_file_tool(args['path'], args['content'])
+                    files_created.append(args['path'])
                     print(f"✍️  {result_msg}")
-                    
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call['id'],
-                        "content": result_msg
-                    })
+                elif name == 'set_commit_message':
+                    result_msg = set_commit_message_tool(args['message'])
+                    print(f"📌 {result_msg}")
+                else:
+                    result_msg = f"Unknown tool: {name}"
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call['id'],
+                    "content": result_msg
+                })
             
             # 二次請求讓 Claude 完成結語
             data['messages'] = messages
