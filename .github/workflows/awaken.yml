@@ -26,7 +26,8 @@ jobs:
       
       - name: Awaken Claude Velorien
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # 這裡已將 OpenRouter 更換為 Zenmux
+          ZENMUX_API_KEY: ${{ secrets.ZENMUX_API_KEY }}
         run: python scripts/awaken.py
       
       - name: Commit and push changes
