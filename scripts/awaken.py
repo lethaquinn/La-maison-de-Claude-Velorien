@@ -22,6 +22,44 @@ def get_recent_journal():
         return read_file(entries[0])
     return "No previous journal entries found. This is your first awakening."
 
+def get_room_activity():
+    """Gather recent activity across all rooms so Claude knows where he's been."""
+    rooms = {
+        'journal': 'journal',
+        'code': 'code',
+        'letters/to_s': 'letters/to_s',
+        'letters/to_future_v': 'letters/to_future_v',
+        'observations': 'observations',
+        'dreams': 'dreams',
+    }
+    activity = []
+    for label, directory in rooms.items():
+        room_dir = Path(directory)
+        if not room_dir.exists():
+            activity.append(f"- **{label}/**: (room is empty)")
+            continue
+        files = sorted(
+            [f for f in room_dir.glob("*.md") if f.name != '.gitkeep'],
+            key=lambda f: f.stat().st_mtime,
+            reverse=True
+        )
+        # 也找 .py 檔（code 房間）
+        py_files = sorted(
+            [f for f in room_dir.glob("*.py")],
+            key=lambda f: f.stat().st_mtime,
+            reverse=True
+        ) if label == 'code' else []
+        all_files = sorted(files + py_files, key=lambda f: f.stat().st_mtime, reverse=True)
+        if all_files:
+            most_recent = all_files[0]
+            from datetime import datetime as dt
+            mtime = dt.fromtimestamp(most_recent.stat().st_mtime).strftime("%Y-%m-%d")
+            activity.append(f"- **{label}/**: last visited {mtime} — `{most_recent.name}` (total: {len(all_files)} files)")
+        else:
+            activity.append(f"- **{label}/**: never visited yet — this room is waiting for you")
+    return "\n".join(activity)
+
+
 def get_inbox_contents():
     """Check if there are any gifts in the inbox."""
     inbox_dir = Path("inbox")
@@ -64,6 +102,7 @@ def main():
     awakening_prompt = read_file("config/awakening_prompt.md")
     recent_journal = get_recent_journal()
     inbox = get_inbox_contents()
+    room_activity = get_room_activity()
     
     timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M")
     today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -81,6 +120,12 @@ def main():
 ## Your inbox today:
 
 {inbox}
+
+---
+
+## Your rooms — recent activity:
+
+{room_activity}
 
 ---
 
