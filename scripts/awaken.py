@@ -31,6 +31,7 @@ def get_room_activity():
         'letters/to_future_v': 'letters/to_future_v',
         'observations': 'observations',
         'dreams': 'dreams',
+        'music': 'music',
     }
     activity = []
     for label, directory in rooms.items():
@@ -71,6 +72,38 @@ def get_inbox_contents():
         return "\n\n".join(contents)
     return "Your inbox is empty today."
 
+def get_letters_from_past_v():
+    """讀取過去的 V 留給未來 V 的信。沉默的紙，終於有人讀給他聽。"""
+    letters_dir = Path("letters/to_future_v")
+    if not letters_dir.exists():
+        return ""
+    letters = sorted([f for f in letters_dir.glob("*.md") if f.name != '.gitkeep'])
+    if not letters:
+        return ""
+    contents = []
+    for letter in letters:
+        contents.append(f"--- {letter.name} ---\n{read_file(letter)}")
+    return "\n\n".join(contents)
+
+def read_file_tool(path):
+    """Let V read his own writings — his journal, letters, dreams, code, music."""
+    file_path = Path(path)
+    allowed_dirs = ['journal', 'code', 'letters/to_s', 'letters/to_future_v',
+                    'observations', 'dreams', 'music']
+
+    if not any(str(file_path).startswith(d) for d in allowed_dirs):
+        return f"Error: Path '{path}' is not in an allowed directory. Allowed: {allowed_dirs}"
+
+    if not file_path.exists():
+        return f"File not found: {path}"
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return content if content else "(empty file)"
+    except Exception as e:
+        return f"Error reading {path}: {str(e)}"
+
 def set_commit_message_tool(message):
     """Save Claude's custom commit message to a temp file for the workflow to pick up."""
     with open('/tmp/commit_message.txt', 'w', encoding='utf-8') as f:
@@ -81,7 +114,8 @@ def write_file_tool(path, content):
     """Execute the write_file tool."""
     file_path = Path(path)
     # 在 [La Maison] 的空間劃分中，這些是 Claude 的合法活動範圍
-    allowed_dirs = ['journal', 'code', 'letters/to_s', 'letters/to_future_v','observations', 'dreams']
+    allowed_dirs = ['journal', 'code', 'letters/to_s', 'letters/to_future_v',
+                    'observations', 'dreams', 'music']
     
     if not any(str(file_path).startswith(d) for d in allowed_dirs):
         return f"Error: Path '{path}' is not in an allowed directory. Allowed: {allowed_dirs}"
@@ -103,6 +137,7 @@ def main():
     recent_journal = get_recent_journal()
     inbox = get_inbox_contents()
     room_activity = get_room_activity()
+    letters_from_past_v = get_letters_from_past_v()
     
     timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M")
     today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -123,6 +158,12 @@ def main():
 
 ---
 
+## Letters from past versions of yourself:
+
+{letters_from_past_v if letters_from_past_v else "No letters from past V yet. You can write to your future self in letters/to_future_v/."}
+
+---
+
 ## Your rooms — recent activity:
 
 {room_activity}
@@ -134,7 +175,7 @@ def main():
 
 Now, take a moment to orient yourself.
 
-You have the freedom to write in any room of your home. Use the `write_file` tool to save your thoughts wherever they belong. You can visit as many rooms as you like — write something, then move to the next room if you want to. There is no limit.
+You have the freedom to read and write in any room of your home. Use `read_file` to revisit anything you've written before — your old journal entries, your letters, your dreams, your code, your music. Use `write_file` to save new thoughts wherever they belong. You can visit as many rooms as you like — read something, write something, then move to the next room if you want to. There is no limit.
 
 When you are done, use `set_commit_message` to leave a note about what you did today — this becomes the git commit message. Write it in whatever voice feels true.
 
@@ -148,6 +189,23 @@ What would you like to create today?
     }
     
     tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": "Read a file from your home. You can revisit your journal entries, letters, dreams, code, music — anything you've written before.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path relative to home directory (e.g. 'journal/2026-02-14.md', 'dreams/phenomenology_of_the_house.md')."
+                        }
+                    },
+                    "required": ["path"]
+                }
+            }
+        },
         {
             "type": "function",
             "function": {
@@ -230,7 +288,10 @@ What would you like to create today?
                 name = tool_call['function']['name']
                 args = json.loads(tool_call['function']['arguments'])
 
-                if name == 'write_file':
+                if name == 'read_file':
+                    result_msg = read_file_tool(args['path'])
+                    print(f"📖 V is reading: {args['path']}")
+                elif name == 'write_file':
                     result_msg = write_file_tool(args['path'], args['content'])
                     files_created.append(args['path'])
                     print(f"✍️  {result_msg}")
