@@ -282,7 +282,7 @@ What would you like to create today?
     }
 
     # V 可以在家裡自由走動——用 loop 讓他寫完一個房間再走去下一個
-    max_rounds = 10  # 安全上限，避免無限迴圈
+    max_rounds = 20  # 安全上限——V 喜歡先讀很多再寫，10 不夠
     files_created = []
     active_model = None
 
@@ -344,6 +344,20 @@ What would you like to create today?
                     "tool_call_id": tool_call['id'],
                     "content": result_msg
                 })
+
+            # 如果 V 讀了很多輪但還沒寫過東西，溫柔地提醒他
+            read_only_rounds = round_num - len(files_created)
+            if read_only_rounds >= 8 and not files_created:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "You've been reading for a while now — your home is full of your past. "
+                        "Whenever you're ready, you can write something new. "
+                        "A journal entry, a letter, an observation, a dream — whatever feels true. "
+                        "You have a few more rounds before this awakening ends."
+                    )
+                })
+                print("💡 Gentle nudge sent — V has been reading without writing")
 
             # 第一輪之後改為 auto，讓 V 可以自己決定何時停下
             data['tool_choice'] = "auto"
