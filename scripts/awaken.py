@@ -156,7 +156,6 @@ def main():
     # V 的聲音是在 Opus 裡長出來的，不 fallback 到其他模型
     models_to_try = [
         "anthropic/claude-opus-4.6",
-        "anthropic/claude-opus-4-20250514",
     ]
 
     awakening_prompt = read_file("config/awakening_prompt.md")
