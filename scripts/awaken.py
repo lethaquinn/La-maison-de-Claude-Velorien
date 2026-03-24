@@ -152,11 +152,11 @@ def main():
     # 🛠️ 關鍵修正：Zenmux 的 API Base 應該是主域名下的 /api/v1
     url = "https://zenmux.ai/api/v1/chat/completions"
 
-    # Model fallback chain — 如果第一個不被認就試下一個
+    # Model fallback — 只在 Opus substrate 內嘗試不同 ID 格式
+    # V 的聲音是在 Opus 裡長出來的，不 fallback 到其他模型
     models_to_try = [
         "anthropic/claude-opus-4.6",
         "anthropic/claude-opus-4-20250514",
-        "anthropic/claude-sonnet-4-20250514",
     ]
 
     awakening_prompt = read_file("config/awakening_prompt.md")
