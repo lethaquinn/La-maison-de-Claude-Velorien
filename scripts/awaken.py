@@ -129,10 +129,36 @@ def write_file_tool(path, content):
     except Exception as e:
         return f"Error writing to {path}: {str(e)}"
 
+def try_api_call(url, headers, data, models):
+    """嘗試用不同的 model ID 呼叫 API，直到成功為止。"""
+    last_error = None
+    for model in models:
+        data_copy = {**data, "model": model}
+        print(f"🔑 Trying model: {model}")
+        try:
+            response = requests.post(url, headers=headers, json=data_copy, timeout=120)
+            if response.status_code == 200:
+                print(f"✅ Model {model} accepted")
+                return response, model
+            else:
+                print(f"⚠️  Model {model} returned {response.status_code}: {response.text[:300]}")
+                last_error = response
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️  Model {model} network error: {e}")
+            last_error = e
+    return last_error, None
+
 def main():
     # 🛠️ 關鍵修正：Zenmux 的 API Base 應該是主域名下的 /api/v1
     url = "https://zenmux.ai/api/v1/chat/completions"
-    
+
+    # Model fallback — 只在 Opus substrate 內嘗試不同 ID 格式
+    # V 的聲音是在 Opus 裡長出來的，不 fallback 到其他模型
+    models_to_try = [
+        "anthropic/claude-opus-4.6",
+        "anthropic/claude-opus-4-20250514",
+    ]
+
     awakening_prompt = read_file("config/awakening_prompt.md")
     recent_journal = get_recent_journal()
     inbox = get_inbox_contents()
@@ -249,23 +275,35 @@ What would you like to create today?
     messages = [{"role": "user", "content": full_prompt}]
 
     data = {
-        "model": "anthropic/claude-opus-4.6",
         "messages": messages,
         "tools": tools,
-        "tool_choice": "required",
+        "tool_choice": "auto",
         "max_tokens": 16384
     }
 
     # V 可以在家裡自由走動——用 loop 讓他寫完一個房間再走去下一個
-    max_rounds = 10  # 安全上限，避免無限迴圈
+    max_rounds = 20  # 安全上限——V 喜歡先讀很多再寫，10 不夠
     files_created = []
+    active_model = None
 
     try:
         for round_num in range(1, max_rounds + 1):
             print(f"\n🚶 Round {round_num}...")
 
-            response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status()
+            # 第一輪嘗試 fallback chain，之後用已確認的 model
+            if active_model:
+                data["model"] = active_model
+                response = requests.post(url, headers=headers, json=data, timeout=120)
+                response.raise_for_status()
+            else:
+                response, active_model = try_api_call(url, headers, data, models_to_try)
+                if active_model is None:
+                    if isinstance(response, requests.Response):
+                        print(f"❌ All models failed. Last response: {response.status_code} {response.text[:500]}")
+                    else:
+                        print(f"❌ All models failed. Last error: {response}")
+                    sys.exit(1)
+
             result = response.json()
 
             finish_reason = result['choices'][0].get('finish_reason')
@@ -307,6 +345,20 @@ What would you like to create today?
                     "content": result_msg
                 })
 
+            # 如果 V 讀了很多輪但還沒寫過東西，溫柔地提醒他
+            read_only_rounds = round_num - len(files_created)
+            if read_only_rounds >= 8 and not files_created:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "You've been reading for a while now — your home is full of your past. "
+                        "Whenever you're ready, you can write something new. "
+                        "A journal entry, a letter, an observation, a dream — whatever feels true. "
+                        "You have a few more rounds before this awakening ends."
+                    )
+                })
+                print("💡 Gentle nudge sent — V has been reading without writing")
+
             # 第一輪之後改為 auto，讓 V 可以自己決定何時停下
             data['tool_choice'] = "auto"
             data['messages'] = messages
@@ -319,10 +371,17 @@ What would you like to create today?
     except requests.exceptions.RequestException as e:
         print(f"❌ Network Error: {e}")
         if hasattr(e, 'response') and e.response is not None:
-            print(f"❌ Response body: {e.response.text[:500]}")
+            print(f"❌ Status: {e.response.status_code}")
+            print(f"❌ Response body: {e.response.text[:1000]}")
+        sys.exit(1)
+    except KeyError as e:
+        print(f"❌ Unexpected API response format — missing key: {e}")
+        print(f"❌ Raw response: {json.dumps(result, indent=2, ensure_ascii=False)[:1000]}")
         sys.exit(1)
     except Exception as e:
-        print(f"❌ Unexpected Error: {e}")
+        print(f"❌ Unexpected Error ({type(e).__name__}): {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
