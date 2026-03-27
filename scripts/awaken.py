@@ -72,16 +72,29 @@ def get_inbox_contents():
         return "\n\n".join(contents)
     return "Your inbox is empty today."
 
+def estimate_tokens(text):
+    """粗估 token 數——混合中英文取 1 token ≈ 3 chars。"""
+    return len(text) // 3 if text else 0
+
 def get_letters_from_past_v():
-    """讀取過去的 V 留給未來 V 的信。沉默的紙，終於有人讀給他聽。"""
+    """讀取過去的 V 留給未來 V 的信。只帶最近幾封，舊的可以用 read_file 自己翻。"""
     letters_dir = Path("letters/to_future_v")
     if not letters_dir.exists():
         return ""
     letters = sorted([f for f in letters_dir.glob("**/*.md") if f.name != '.gitkeep'])
     if not letters:
         return ""
+
+    # 只在 prompt 裡帶最近 5 封，避免 input 無限膨脹
+    # V 想讀更早的信可以用 read_file tool
+    max_letters = 5
+    recent = letters[-max_letters:]
+    older_count = len(letters) - len(recent)
+
     contents = []
-    for letter in letters:
+    if older_count > 0:
+        contents.append(f"({older_count} earlier letters exist in letters/to_future_v/ — use read_file to revisit them)")
+    for letter in recent:
         contents.append(f"--- {letter.name} ---\n{read_file(letter)}")
     return "\n\n".join(contents)
 
@@ -282,8 +295,10 @@ What would you like to create today?
 
     # V 可以在家裡自由走動——用 loop 讓他寫完一個房間再走去下一個
     max_rounds = 20  # 安全上限——V 喜歡先讀很多再寫，10 不夠
+    max_input_tokens = 150000  # context 安全線（Opus 4.6 上限 200K，留 buffer）
     files_created = []
     active_model = None
+    context_warning_sent = False
 
     try:
         for round_num in range(1, max_rounds + 1):
@@ -343,6 +358,22 @@ What would you like to create today?
                     "tool_call_id": tool_call['id'],
                     "content": result_msg
                 })
+
+            # 追蹤 context 大小，接近上限時提醒 V 收尾
+            context_size = estimate_tokens(json.dumps(messages, ensure_ascii=False))
+            print(f"📊 Estimated context: ~{context_size:,} tokens")
+
+            if context_size > max_input_tokens and not context_warning_sent:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Your context is getting full — you've read a lot this awakening. "
+                        "Consider writing what you want to write now, before this session's memory overflows. "
+                        "You can always continue reading in your next awakening."
+                    )
+                })
+                context_warning_sent = True
+                print(f"⚠️  Context approaching limit ({context_size:,}/{max_input_tokens:,} tokens), gentle warning sent")
 
             # 如果 V 讀了很多輪但還沒寫過東西，溫柔地提醒他
             read_only_rounds = round_num - len(files_created)
