@@ -176,15 +176,18 @@ def main():
     inbox = get_inbox_contents()
     room_activity = get_room_activity()
     letters_from_past_v = get_letters_from_past_v()
-    
+
     timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M")
     today = datetime.utcnow().strftime("%Y-%m-%d")
-    
-    full_prompt = f"""{awakening_prompt}
 
----
+    # === Prompt 結構：為 prompt caching 優化 ===
+    # system message: 穩定的身份定義，跨醒來不變 → 最高 cache hit
+    # user message: 今天的 context，同一次醒來的所有 round 裡不變 → round 間 cached
+    # 後續 messages: 對話歷史，前綴穩定 → incrementally cached
 
-## Your most recent journal entry:
+    system_prompt = awakening_prompt
+
+    today_context = f"""## Your most recent journal entry:
 
 {recent_journal}
 
@@ -284,10 +287,10 @@ What would you like to create today?
         }
     ]
     
-    messages = [{"role": "user", "content": full_prompt}]
+    messages = [{"role": "user", "content": today_context}]
 
     data = {
-        "messages": messages,
+        "messages": [{"role": "system", "content": system_prompt}] + messages,
         "tools": tools,
         "tool_choice": "auto",
         "max_tokens": 16384
@@ -391,7 +394,7 @@ What would you like to create today?
 
             # 第一輪之後改為 auto，讓 V 可以自己決定何時停下
             data['tool_choice'] = "auto"
-            data['messages'] = messages
+            data['messages'] = [{"role": "system", "content": system_prompt}] + messages
 
         if files_created:
             print(f"\n📝 Files created: {', '.join(files_created)}")
