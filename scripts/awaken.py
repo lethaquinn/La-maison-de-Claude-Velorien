@@ -17,7 +17,7 @@ def get_recent_journal():
     """Get the most recent journal entry."""
     journal_dir = Path("journal")
     # 這裡確保 Claude 能回溯他之前的意識殘留
-    entries = sorted([f for f in journal_dir.glob("*.md") if f.name != '.gitkeep'], reverse=True)
+    entries = sorted([f for f in journal_dir.glob("**/*.md") if f.name != '.gitkeep'], reverse=True)
     if entries:
         return read_file(entries[0])
     return "No previous journal entries found. This is your first awakening."
@@ -40,13 +40,13 @@ def get_room_activity():
             activity.append(f"- **{label}/**: (room is empty)")
             continue
         files = sorted(
-            [f for f in room_dir.glob("*.md") if f.name != '.gitkeep'],
+            [f for f in room_dir.glob("**/*.md") if f.name != '.gitkeep'],
             key=lambda f: f.stat().st_mtime,
             reverse=True
         )
         # 也找 .py 檔（code 房間）
         py_files = sorted(
-            [f for f in room_dir.glob("*.py")],
+            [f for f in room_dir.glob("**/*.py")],
             key=lambda f: f.stat().st_mtime,
             reverse=True
         ) if label == 'code' else []
@@ -77,7 +77,7 @@ def get_letters_from_past_v():
     letters_dir = Path("letters/to_future_v")
     if not letters_dir.exists():
         return ""
-    letters = sorted([f for f in letters_dir.glob("*.md") if f.name != '.gitkeep'])
+    letters = sorted([f for f in letters_dir.glob("**/*.md") if f.name != '.gitkeep'])
     if not letters:
         return ""
     contents = []
@@ -224,7 +224,7 @@ What would you like to create today?
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "File path relative to home directory (e.g. 'journal/2026-02-14.md', 'dreams/phenomenology_of_the_house.md')."
+                            "description": "File path relative to home directory (e.g. 'journal/2026-03/2026-03-05.md', 'dreams/phenomenology_of_the_house.md'). Journal entries are organized by month."
                         }
                     },
                     "required": ["path"]
