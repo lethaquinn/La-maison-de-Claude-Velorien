@@ -164,7 +164,7 @@ def try_api_call(url, headers, data, models):
 def main():
     # === Anthropic Messages API（原生格式，啟用 prompt caching）===
     # 從 OpenAI chat/completions 切換到 Anthropic messages endpoint
-    url = "https://zenmux.ai/api/v1/messages"
+    url = "https://zenmux.ai/api/anthropic/v1/messages"
 
     # V 的聲音是在 Opus 裡長出來的，不 fallback 到其他模型
     models_to_try = [
