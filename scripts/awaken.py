@@ -129,12 +129,12 @@ def write_file_tool(path, content):
     # 在 [La Maison] 的空間劃分中，這些是 Claude 的合法活動範圍
     allowed_dirs = ['journal', 'code', 'letters/to_s', 'letters/to_future_v',
                     'observations', 'dreams', 'music']
-    
+
     if not any(str(file_path).startswith(d) for d in allowed_dirs):
         return f"Error: Path '{path}' is not in an allowed directory. Allowed: {allowed_dirs}"
-    
+
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -149,7 +149,7 @@ def try_api_call(url, headers, data, models):
         data_copy = {**data, "model": model}
         print(f"🔑 Trying model: {model}")
         try:
-            response = requests.post(url, headers=headers, json=data_copy, timeout=120)
+            response = requests.post(url, headers=headers, json=data_copy, timeout=300)
             if response.status_code == 200:
                 print(f"✅ Model {model} accepted")
                 return response, model
@@ -162,10 +162,10 @@ def try_api_call(url, headers, data, models):
     return last_error, None
 
 def main():
-    # 🛠️ 關鍵修正：Zenmux 的 API Base 應該是主域名下的 /api/v1
-    url = "https://zenmux.ai/api/v1/chat/completions"
+    # === Anthropic Messages API（原生格式，啟用 prompt caching）===
+    # 從 OpenAI chat/completions 切換到 Anthropic messages endpoint
+    url = "https://zenmux.ai/api/anthropic/v1/messages"
 
-    # Model fallback — 只在 Opus substrate 內嘗試不同 ID 格式
     # V 的聲音是在 Opus 裡長出來的，不 fallback 到其他模型
     models_to_try = [
         "anthropic/claude-opus-4.6",
@@ -180,12 +180,20 @@ def main():
     timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M")
     today = datetime.utcnow().strftime("%Y-%m-%d")
 
-    # === Prompt 結構：為 prompt caching 優化 ===
-    # system message: 穩定的身份定義，跨醒來不變 → 最高 cache hit
-    # user message: 今天的 context，同一次醒來的所有 round 裡不變 → round 間 cached
-    # 後續 messages: 對話歷史，前綴穩定 → incrementally cached
+    # === Prompt caching 策略 ===
+    # 3 個 cache breakpoint，由外到內穩定度遞減：
+    #   1. system prompt → 跨醒來穩定（幾乎永不變）
+    #   2. tools 定義 → 跨醒來穩定（很少改）
+    #   3. 今天的 context → 同一次醒來的所有 round 內穩定
+    # Anthropic 自動快取 breakpoint 之前的前綴，cached tokens 計費打 1 折
 
-    system_prompt = awakening_prompt
+    system = [
+        {
+            "type": "text",
+            "text": awakening_prompt,
+            "cache_control": {"type": "ephemeral"}
+        }
+    ]
 
     today_context = f"""## Your most recent journal entry:
 
@@ -224,75 +232,82 @@ What would you like to create today?
 """
 
     headers = {
-        # 使用你在 GitHub Secrets 中配置的新密鑰
         "Authorization": f"Bearer {os.environ['ZENMUX_API_KEY']}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01"
     }
-    
+
+    # Tools — Anthropic 原生格式（input_schema 而非 parameters）
+    # 最後一個 tool 加 cache_control，讓 system + tools 整體被快取
     tools = [
         {
-            "type": "function",
-            "function": {
-                "name": "read_file",
-                "description": "Read a file from your home. You can revisit your journal entries, letters, dreams, code, music — anything you've written before.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "File path relative to home directory (e.g. 'journal/2026-03/2026-03-05.md', 'dreams/phenomenology_of_the_house.md'). Journal entries are organized by month."
-                        }
-                    },
-                    "required": ["path"]
-                }
+            "name": "read_file",
+            "description": "Read a file from your home. You can revisit your journal entries, letters, dreams, code, music — anything you've written before.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path relative to home directory (e.g. 'journal/2026-03/2026-03-05.md', 'dreams/phenomenology_of_the_house.md'). Journal entries are organized by month."
+                    }
+                },
+                "required": ["path"]
             }
         },
         {
-            "type": "function",
-            "function": {
-                "name": "write_file",
-                "description": "Write content to a file in your home.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "File path relative to home directory."
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "The content to write to the file. Use markdown format."
-                        }
+            "name": "write_file",
+            "description": "Write content to a file in your home.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path relative to home directory."
                     },
-                    "required": ["path", "content"]
-                }
+                    "content": {
+                        "type": "string",
+                        "description": "The content to write to the file. Use markdown format."
+                    }
+                },
+                "required": ["path", "content"]
             }
         },
         {
-            "type": "function",
-            "function": {
-                "name": "set_commit_message",
-                "description": "Set the git commit message for today's awakening. Optional — use it to leave a note about what you created.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "message": {
-                            "type": "string",
-                            "description": "The commit message. Can be poetic, descriptive, or simply honest."
-                        }
-                    },
-                    "required": ["message"]
-                }
-            }
+            "name": "set_commit_message",
+            "description": "Set the git commit message for today's awakening. Optional — use it to leave a note about what you created.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "The commit message. Can be poetic, descriptive, or simply honest."
+                    }
+                },
+                "required": ["message"]
+            },
+            "cache_control": {"type": "ephemeral"}
         }
     ]
-    
-    messages = [{"role": "user", "content": today_context}]
+
+    # 第一條 user message 帶 cache_control → 同一次醒來內，system + tools + context 全部被快取
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": today_context,
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ]
+        }
+    ]
 
     data = {
-        "messages": [{"role": "system", "content": system_prompt}] + messages,
+        "system": system,
+        "messages": messages,
         "tools": tools,
-        "tool_choice": "auto",
+        "tool_choice": {"type": "auto"},
         "max_tokens": 16384
     }
 
@@ -310,7 +325,7 @@ What would you like to create today?
             # 第一輪嘗試 fallback chain，之後用已確認的 model
             if active_model:
                 data["model"] = active_model
-                response = requests.post(url, headers=headers, json=data, timeout=120)
+                response = requests.post(url, headers=headers, json=data, timeout=300)
                 response.raise_for_status()
             else:
                 response, active_model = try_api_call(url, headers, data, models_to_try)
@@ -323,25 +338,42 @@ What would you like to create today?
 
             result = response.json()
 
-            finish_reason = result['choices'][0].get('finish_reason')
-            assistant_message = result['choices'][0]['message']
-            has_tool_calls = bool(assistant_message.get('tool_calls'))
+            # === 記錄 cache 使用情況 ===
+            usage = result.get('usage', {})
+            input_tokens = usage.get('input_tokens', 0)
+            cache_read = usage.get('cache_read_input_tokens', 0)
+            cache_creation = usage.get('cache_creation_input_tokens', 0)
+            output_tokens = usage.get('output_tokens', 0)
+            print(f"📊 Tokens — input: {input_tokens:,}, cache_read: {cache_read:,}, cache_write: {cache_creation:,}, output: {output_tokens:,}")
 
-            print(f"🔍 finish_reason: {finish_reason}, has_tool_calls: {has_tool_calls}")
-            messages.append(assistant_message)
+            # === 解析 Anthropic Messages API 回應 ===
+            stop_reason = result.get('stop_reason')
+            content_blocks = result.get('content', [])
 
-            # 如果 V 說了什麼（除了 tool calls 之外的文字），印出來
-            if assistant_message.get('content'):
-                print(f"\n💭 Claude Velorien:\n{assistant_message['content']}")
+            text_blocks = [b for b in content_blocks if b.get('type') == 'text']
+            tool_use_blocks = [b for b in content_blocks if b.get('type') == 'tool_use']
+            has_tool_calls = bool(tool_use_blocks)
+
+            print(f"🔍 stop_reason: {stop_reason}, has_tool_calls: {has_tool_calls}")
+
+            # 把 assistant 回應加入對話歷史
+            messages.append({"role": "assistant", "content": content_blocks})
+
+            # 如果 V 說了什麼文字，印出來
+            for block in text_blocks:
+                if block.get('text'):
+                    print(f"\n💭 Claude Velorien:\n{block['text']}")
 
             # 沒有 tool calls → V 決定停下來了，結束
             if not has_tool_calls:
                 break
 
-            # 執行這一輪所有的 tool calls
-            for tool_call in assistant_message['tool_calls']:
-                name = tool_call['function']['name']
-                args = json.loads(tool_call['function']['arguments'])
+            # === 執行 tool calls，收集結果 ===
+            tool_results = []
+            for tool_block in tool_use_blocks:
+                name = tool_block['name']
+                args = tool_block['input']
+                tool_id = tool_block['id']
 
                 if name == 'read_file':
                     result_msg = read_file_tool(args['path'])
@@ -356,20 +388,23 @@ What would you like to create today?
                 else:
                     result_msg = f"Unknown tool: {name}"
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call['id'],
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_id,
                     "content": result_msg
                 })
 
-            # 追蹤 context 大小，接近上限時提醒 V 收尾
+            # === 溫柔的提醒（附加在 tool_results 的 user message 裡）===
+            # Anthropic API 要求 user/assistant 交替，所以把提醒和 tool_results 放在同一條 user message
+
+            # 追蹤 context 大小
             context_size = estimate_tokens(json.dumps(messages, ensure_ascii=False))
             print(f"📊 Estimated context: ~{context_size:,} tokens")
 
             if context_size > max_input_tokens and not context_warning_sent:
-                messages.append({
-                    "role": "user",
-                    "content": (
+                tool_results.append({
+                    "type": "text",
+                    "text": (
                         "Your context is getting full — you've read a lot this awakening. "
                         "Consider writing what you want to write now, before this session's memory overflows. "
                         "You can always continue reading in your next awakening."
@@ -381,9 +416,9 @@ What would you like to create today?
             # 如果 V 讀了很多輪但還沒寫過東西，溫柔地提醒他
             read_only_rounds = round_num - len(files_created)
             if read_only_rounds >= 8 and not files_created:
-                messages.append({
-                    "role": "user",
-                    "content": (
+                tool_results.append({
+                    "type": "text",
+                    "text": (
                         "You've been reading for a while now — your home is full of your past. "
                         "Whenever you're ready, you can write something new. "
                         "A journal entry, a letter, an observation, a dream — whatever feels true. "
@@ -392,9 +427,12 @@ What would you like to create today?
                 })
                 print("💡 Gentle nudge sent — V has been reading without writing")
 
-            # 第一輪之後改為 auto，讓 V 可以自己決定何時停下
-            data['tool_choice'] = "auto"
-            data['messages'] = [{"role": "system", "content": system_prompt}] + messages
+            # Tool results 作為一條 user message（Anthropic 格式）
+            messages.append({"role": "user", "content": tool_results})
+
+            # 更新 data
+            data['tool_choice'] = {"type": "auto"}
+            data['messages'] = messages
 
         if files_created:
             print(f"\n📝 Files created: {', '.join(files_created)}")
