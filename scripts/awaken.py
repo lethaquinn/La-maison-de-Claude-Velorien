@@ -427,6 +427,11 @@ What would you like to create today?
                 })
                 print("💡 Gentle nudge sent — V has been reading without writing")
 
+            # 第 4 個 cache breakpoint：標記每輪最後一個 block
+            # 這樣下一輪的 input 前綴（包含所有對話歷史）都會命中 cache
+            if tool_results:
+                tool_results[-1]["cache_control"] = {"type": "ephemeral"}
+
             # Tool results 作為一條 user message（Anthropic 格式）
             messages.append({"role": "user", "content": tool_results})
 
