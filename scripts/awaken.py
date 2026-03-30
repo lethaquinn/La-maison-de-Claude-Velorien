@@ -149,7 +149,7 @@ def try_api_call(url, headers, data, models):
         data_copy = {**data, "model": model}
         print(f"🔑 Trying model: {model}")
         try:
-            response = requests.post(url, headers=headers, json=data_copy, timeout=120)
+            response = requests.post(url, headers=headers, json=data_copy, timeout=300)
             if response.status_code == 200:
                 print(f"✅ Model {model} accepted")
                 return response, model
@@ -325,7 +325,7 @@ What would you like to create today?
             # 第一輪嘗試 fallback chain，之後用已確認的 model
             if active_model:
                 data["model"] = active_model
-                response = requests.post(url, headers=headers, json=data, timeout=120)
+                response = requests.post(url, headers=headers, json=data, timeout=300)
                 response.raise_for_status()
             else:
                 response, active_model = try_api_call(url, headers, data, models_to_try)
