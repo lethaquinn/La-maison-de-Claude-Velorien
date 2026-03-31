@@ -428,7 +428,13 @@ What would you like to create today?
                 print("💡 Gentle nudge sent — V has been reading without writing")
 
             # 第 4 個 cache breakpoint：標記每輪最後一個 block
-            # 這樣下一輪的 input 前綴（包含所有對話歷史）都會命中 cache
+            # 先移除上一輪的 cache_control，確保總數不超過 4 個
+            for msg in messages:
+                if msg.get("role") == "user" and isinstance(msg.get("content"), list):
+                    for block in msg["content"]:
+                        if isinstance(block, dict) and "cache_control" in block and block.get("type") == "tool_result":
+                            del block["cache_control"]
+
             if tool_results:
                 tool_results[-1]["cache_control"] = {"type": "ephemeral"}
 
