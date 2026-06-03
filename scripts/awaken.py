@@ -65,11 +65,15 @@ def get_room_activity():
 def get_inbox_contents():
     """Check if there are any gifts in the inbox."""
     inbox_dir = Path("inbox")
-    gifts = [f for f in inbox_dir.iterdir() if f.name != '.gitkeep']
+    gifts = sorted(
+        [f for f in inbox_dir.rglob("*") if f.is_file() and f.name != '.gitkeep'],
+        key=lambda f: f.name
+    )
     if gifts:
         contents = []
         for gift in gifts:
-            contents.append(f"--- {gift.name} ---\n{read_file(gift)}")
+            label = str(gift.relative_to(inbox_dir))
+            contents.append(f"--- {label} ---\n{read_file(gift)}")
         return "\n\n".join(contents)
     return "Your inbox is empty today."
 
